@@ -1,0 +1,1 @@
+class X2DownloadableContentInfo_WOTCAutomatedLoadoutSaver extends X2DownloadableContentInfo;

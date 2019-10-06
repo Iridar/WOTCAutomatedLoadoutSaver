@@ -1,0 +1,44 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="12.0" DefaultTargets="Default" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <Guid>8445d295-9597-4dda-a7fb-648b50e75e63</Guid>
+    <Name>WOTCAutomatedLoadoutSaver</Name>
+    <Description>Automatically saves inventory items used by a soldier, and automatically tries to equip them when the soldier enters squad select screen.
+
+tags= war of the chosen, ui</Description>
+    <SteamPublishID>0</SteamPublishID>
+    <AssemblyName>WOTCAutomatedLoadoutSaver</AssemblyName>
+    <RootNamespace>WOTCAutomatedLoadoutSaver</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <Folder Include="Config\" />
+    <Folder Include="Localization\" />
+    <Folder Include="Src\" />
+    <Folder Include="Src\WOTCAutomatedLoadoutSaver\" />
+    <Folder Include="Src\WOTCAutomatedLoadoutSaver\Classes\" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="Config\XComALS.ini">
+      <SubType>Content</SubType>
+    </Content>
+    <Content Include="Config\XComGameData.ini">
+      <SubType>Content</SubType>
+    </Content>
+    <Content Include="Localization\WOTCAutomatedLoadoutSaver.int">
+      <SubType>Content</SubType>
+    </Content>
+    <Content Include="ReadMe.txt" />
+    <Content Include="ModPreview.jpg" />
+    <Content Include="Config\XComEditor.ini" />
+    <Content Include="Config\XComEngine.ini" />
+    <Content Include="Config\XComGame.ini" />
+    <Content Include="Src\WOTCAutomatedLoadoutSaver\Classes\UIScreenListener_ALS.uc">
+      <SubType>Content</SubType>
+    </Content>
+    <Content Include="Src\WOTCAutomatedLoadoutSaver\Classes\X2DownloadableContentInfo_WOTCAutomatedLoadoutSaver.uc" />
+    <Content Include="Src\WOTCAutomatedLoadoutSaver\Classes\XComGameState_ALS.uc">
+      <SubType>Content</SubType>
+    </Content>
+  </ItemGroup>
+  <Import Project="$(MSBuildLocalExtensionPath)\XCOM2.targets" />
+</Project>
