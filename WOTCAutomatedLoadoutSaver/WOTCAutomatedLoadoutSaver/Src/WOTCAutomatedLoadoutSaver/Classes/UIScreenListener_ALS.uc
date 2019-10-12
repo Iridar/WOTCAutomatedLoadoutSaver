@@ -21,6 +21,8 @@ var localized string strSaveSquadLoadoutTooltip;
 var localized string strLockSquadLoadoutTooltip;
 var localized string strUnlockSquadLoadoutTooltip;
 
+var X2StrategyElementTemplate CHVersion;
+
 //	================================================================================
 //	================================================================================
 //								EVENTS FOR UPDATING THE SQUAD
@@ -49,7 +51,18 @@ event OnInit(UIScreen Screen)
 	else if(UIArmory_Loadout(Screen) != none)
 	{
 		AddButtons(UIArmory_Loadout(Screen));
-		`SCREENSTACK.SubscribeToOnInput(OnArmoryLoadoutInput);
+		if (CHVersion != none)
+		{
+			`SCREENSTACK.SubscribeToOnInput(OnArmoryLoadoutInput);
+		}
+		else
+		{
+			CHVersion = class'X2StrategyElementTemplateManager'.static.GetStrategyElementTemplateManager().FindStrategyElementTemplate('CHXComGameVersion');
+			if (CHVersion != none)
+			{
+				`SCREENSTACK.SubscribeToOnInput(OnArmoryLoadoutInput);
+			}
+		}
 	}
 	else if(UIManageEquipmentMenu(Screen) != none)
 	{
@@ -76,13 +89,16 @@ event OnReceiveFocus(UIScreen Screen)
 	else if(UIArmory_Loadout(Screen) != none)
 	{
 		AddButtons(UIArmory_Loadout(Screen)); // Mr. Nice: Not sure this is required? It's not like NavHelp which gets flushed on pratically any kind of refresh/update...
-		`SCREENSTACK.SubscribeToOnInput(OnArmoryLoadoutInput);
+		if (CHVersion != none)
+		{
+			`SCREENSTACK.SubscribeToOnInput(OnArmoryLoadoutInput);
+		}
 	}
 }
 
 event OnLoseFocus(UIScreen Screen)
 {
-	if(UIArmory_Loadout(Screen) != none)
+	if(UIArmory_Loadout(Screen) != none && CHVersion != none)
 	{
 		`SCREENSTACK.UnsubscribeFromOnInput(OnArmoryLoadoutInput);
 	}
@@ -90,7 +106,7 @@ event OnLoseFocus(UIScreen Screen)
 
 event OnRemovedFocus(UIScreen Screen)
 {
-	if(UIArmory_Loadout(Screen) != none)
+	if(UIArmory_Loadout(Screen) != none && CHVersion != none)
 	{
 		`SCREENSTACK.UnsubscribeFromOnInput(OnArmoryLoadoutInput);
 	}
