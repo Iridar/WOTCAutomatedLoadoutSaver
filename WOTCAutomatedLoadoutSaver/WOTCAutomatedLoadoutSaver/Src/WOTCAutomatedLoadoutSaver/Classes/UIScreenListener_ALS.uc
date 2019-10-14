@@ -1,6 +1,6 @@
 class UIScreenListener_ALS extends UIScreenListener config(ALS);
 
-const bLog = false;
+var config bool bLog;
 
 var bool LoadoutLocked;
 
@@ -34,14 +34,14 @@ event OnInit(UIScreen Screen)
 {
 	local UISquadSelect SquadSelect;
 
-	//`LOG("Init screen: " @ Screen.Class.Name, bLog, 'IRIALS');
+	//`LOG("Init screen: " @ Screen.Class.Name, default.bLog, 'IRIALM');
 
 	SquadSelect = UISquadSelect(Screen);
 	
 	if (SquadSelect != none)
 	{
 		LoadoutLocked = false;
-		`LOG("## UISquadSelect initialized.", bLog, 'IRIALS');			
+		`LOG("## UISquadSelect initialized.", default.bLog, 'IRIALM');			
 		UpdateSquad(SquadSelect);
 		if(!`ISCONTROLLERACTIVE)
 		{
@@ -79,7 +79,7 @@ event OnReceiveFocus(UIScreen Screen)
 
 	if (SquadSelect != none)
 	{
-		`LOG("## UISquadSelect receives focus.", bLog, 'IRIALS');
+		`LOG("## UISquadSelect receives focus.", default.bLog, 'IRIALM');
 		UpdateSquad(SquadSelect);
 		if(!`ISCONTROLLERACTIVE)
 		{
@@ -198,7 +198,7 @@ simulated function AddMenuItems(UIManageEquipmentMenu EquipmentMenu)
 
 simulated function SaveSquadLoadout()
 {
-	`LOG("Save squad loadout clicked", bLog, 'IRIALS');
+	`LOG("Save squad loadout clicked", default.bLog, 'IRIALM');
 
 	class'XComGameState_ALS'.static.SaveLoadoutsForSquad(`XCOMHQ.Squad);
 	`XSTRATEGYSOUNDMGR.PlaySoundEvent("Play_MenuSelect");
@@ -207,7 +207,7 @@ simulated function SaveSquadLoadout()
 simulated function LockSquadLoadout()
 {
 	LoadoutLocked = true;
-	`LOG("Lock squad loadout clicked", bLog, 'IRIALS');
+	`LOG("Lock squad loadout clicked", default.bLog, 'IRIALM');
 	class'XComGameState_ALS'.static.LockLoadoutsForSquad(`XCOMHQ.Squad);
 	`XSTRATEGYSOUNDMGR.PlaySoundEvent("Play_MenuSelect");
 	UpdateHelp();
@@ -216,7 +216,7 @@ simulated function LockSquadLoadout()
 simulated function UnlockSquadLoadout()
 {	
 	LoadoutLocked = false;
-	`LOG("Unlock squad loadout clicked", bLog, 'IRIALS');
+	`LOG("Unlock squad loadout clicked", default.bLog, 'IRIALM');
 	class'XComGameState_ALS'.static.UnlockLoadoutsForSquad(`XCOMHQ.Squad);
 	`XSTRATEGYSOUNDMGR.PlaySoundEvent("Play_MenuSelect");
 	UpdateHelp();
@@ -265,7 +265,7 @@ simulated function AddButtons(UIArmory_Loadout Screen)
 	ToggleLoadoutLockButton = UIButton(ListContainer.GetChild('IRI_ToggleLoadoutLockButton', false));
 	ToggleLoadoutLockButton = ListContainer.Spawn(class'UIButton', ListContainer).InitButton('IRI_ToggleLoadoutLockButton',, ToggleLoadoutButtonClicked, eUIButtonStyle_NONE);
 
-	`LOG("Looking at soldier: " @ Unit.GetFullName() @ "loadout locked: " @ class'XComGameState_ALS'.static.IsLoadoutLocked(Unit), bLog, 'IRIALS');
+	`LOG("Looking at soldier: " @ Unit.GetFullName() @ "loadout locked: " @ class'XComGameState_ALS'.static.IsLoadoutLocked(Unit), default.bLog, 'IRIALM');
 
 	if (class'XComGameState_ALS'.static.IsLoadoutLocked(Unit)) 
 	{
@@ -383,7 +383,7 @@ static function PrintSquad(array<StateObjectReference> Squad)
 
 		if (UnitState != none)
 		{
-			`LOG("Squad member: " @ UnitState.GetFullName(), bLog, 'IRIALS');
+			`LOG("Squad member: " @ UnitState.GetFullName(), default.bLog, 'IRIALM');
 		}
 	}
 }
@@ -431,7 +431,7 @@ event OnLoseFocus(UIScreen Screen)
 		//PrintSquad(`XCOMHQ.Squad);
 		if (class'XComGameState_ALS'.static.UpdateSquad(`XCOMHQ.Squad))
 		{
-			`LOG("## Loses focus: ", bLog, 'IRIALS');
+			`LOG("## Loses focus: ", default.bLog, 'IRIALM');
 			SquadSelect.bDirty = true;
 			SquadSelect.UpdateData();
 		}
@@ -450,7 +450,7 @@ event OnRemoved(UIScreen Screen)
 		//PrintSquad(`XCOMHQ.Squad);
 		if (class'XComGameState_ALS'.static.UpdateSquad(`XCOMHQ.Squad))
 		{
-			`LOG("## UISquadSelect is removed: ", bLog, 'IRIALS');
+			`LOG("## UISquadSelect is removed: ", default.bLog, 'IRIALM');
 			SquadSelect.bDirty = true;
 			SquadSelect.UpdateData();
 		}
