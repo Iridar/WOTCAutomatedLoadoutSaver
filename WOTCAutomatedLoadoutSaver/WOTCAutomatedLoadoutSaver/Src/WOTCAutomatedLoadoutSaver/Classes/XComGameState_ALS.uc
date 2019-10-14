@@ -248,9 +248,11 @@ private static function EquipItemsOnUnit(out XComGameState_Unit NewUnitState, co
 	local EquipmentInfo						EqInfo;
 	local int								InvIndex;
 	local XComGameState_Item				ItemState;
+	local XComGameState_Item				EquippedItemState;
 	local XComGameState_Item				UnequipItemState;
 	local array<XComGameState_Item>			ItemStates;
 	local bool								bFoundExactMatch;
+	local bool								bNoUnmodifiedItem;
 
 	History = `XCOMHISTORY;
 	XComHQ = XComGameState_HeadquartersXCom(History.GetSingleGameStateObjectForClass(class'XComGameState_HeadquartersXCom'));
@@ -286,14 +288,21 @@ private static function EquipItemsOnUnit(out XComGameState_Unit NewUnitState, co
 
 	foreach InventoryItems(EqInfo)
 	{
-		bFoundExactMatch = false;
-
 		//	DEBUGGING ONLY
 		ItemState = XComGameState_Item(History.GetGameStateForObjectID(EqInfo.EquipmentRef.ObjectID));
 		`LOG("Begin search for equipment item: " @ ItemState.GetMyTemplateName(), default.bLog, 'IRIALM');
 		//	END DEBUGGING
 
+		// Check if the saved item is already equipped.
+		EquippedItemState = NewUnitState.GetItemInSlot(EqInfo.eSlot, NewGameState);
+		if (EquippedItemState != none && EquippedItemState.ObjectID == EqInfo.EquipmentRef.ObjectID)
+		{
+			`LOG("Soldier already has: " @ EquippedItemState.GetMyTemplateName() @ "equipped, skipping. END.", default.bLog, 'IRIALM');
+			continue;
+		}
+
 		//	Try to find the exact item saved in the loadout.
+		bFoundExactMatch = false;
 		InvIndex = XComHQ.Inventory.Find('ObjectID', EqInfo.EquipmentRef.ObjectID);
 		if(InvIndex != INDEX_NONE)
 		{
@@ -305,7 +314,7 @@ private static function EquipItemsOnUnit(out XComGameState_Unit NewUnitState, co
 		else
 		{
 			`LOG("FAILED to find exact match in HQ Inventory, looking for an unmodified instance.", default.bLog, 'IRIALM');
-
+			bNoUnmodifiedItem = false;
 			// Did not find the object in the HQ inventory, it must be equipped on someone else.
 			// Get the latest available state from History and ...
 			ItemState = XComGameState_Item(History.GetGameStateForObjectID(EqInfo.EquipmentRef.ObjectID));
@@ -328,6 +337,7 @@ private static function EquipItemsOnUnit(out XComGameState_Unit NewUnitState, co
 			if (ItemState == none)
 			{
 				`LOG("CRITICAL ERROR, FAILED to find unmodified version. Looking for a replacement.", default.bLog, 'IRIALM');
+				bNoUnmodifiedItem = true;
 				ItemState = XComGameState_Item(History.GetGameStateForObjectID(EqInfo.EquipmentRef.ObjectID));
 				if (ItemState == none) 
 				{
@@ -354,7 +364,16 @@ private static function EquipItemsOnUnit(out XComGameState_Unit NewUnitState, co
 				}
 				else
 				{
-					`LOG("FAILED to find a better replacement, using the original unmodified item.", default.bLog, 'IRIALM');
+					`LOG("FAILED to find a better replacement.", default.bLog, 'IRIALM');
+					if (bNoUnmodifiedItem)
+					{
+						`LOG("Cannot use original unmodified item. Skipping this part of the loadout. END.", default.bLog, 'IRIALM');
+						continue;
+					}
+					else
+					{
+						`LOG("Using the original unmodified item.", default.bLog, 'IRIALM');
+					}
 				}
 			}
 			// END COPYPASTE
@@ -614,6 +633,8 @@ private static function bool FindBestReplacementItemForUnit(const XComGameState_
 	local X2WeaponTemplate		WeaponTemplate;
 	local X2ArmorTemplate		OrigArmorTemplate;
 	local X2ArmorTemplate		ArmorTemplate;
+	local X2EquipmentTemplate	OrigEquipmentTemplate;
+	local X2EquipmentTemplate	EquipmentTemplate;
 	local XComGameStateHistory	History;
 	local int					HighestTier;
 	local XComGameState_Item	ItemState;
@@ -680,8 +701,36 @@ private static function bool FindBestReplacementItemForUnit(const XComGameState_
 		}
 		return false;
 	}
-	//	Not a Weapon or Armor template, don't do anything.
-	`LOG("FAILED to find a better replacement because the item was not a Weapon or Armor template.", default.bLog, 'IRIALM');
+	OrigEquipmentTemplate = X2EquipmentTemplate(OutItemState.GetMyTemplate());
+	if (OrigEquipmentTemplate != none)
+	{
+		foreach XComHQ.Inventory(ItemRef)
+		{
+			ItemState = XComGameState_Item(History.GetGameStateForObjectID(ItemRef.ObjectID));
+			EquipmentTemplate = X2EquipmentTemplate(ItemState.GetMyTemplate());
+
+			if (EquipmentTemplate != none)
+			{
+				if (EquipmentTemplate.ItemCat == OrigEquipmentTemplate.ItemCat &&
+					UnitState.CanAddItemToInventory(ArmorTemplate, eSlot, NewGameState, ItemState.Quantity, ItemState))
+				{
+					if (EquipmentTemplate.Tier > HighestTier)
+					{
+						HighestTier = EquipmentTemplate.Tier;
+						BestItemState = ItemState;
+					}
+				}
+			}
+		}
+		if (HighestTier != -999)
+		{
+			XComHQ.GetItemFromInventory(NewGameState, BestItemState.GetReference(), OutItemState);
+			return true;
+		}
+		return false;
+	}
+	//	Not a valid template, don't do anything.
+	`LOG("FAILED to find a better replacement because the item was not a Weapon, Armor or Equipment template.", default.bLog, 'IRIALM');
 	return false;
 }
 
