@@ -1,4 +1,4 @@
-class UIScreenListener_ALS extends UIScreenListener config(ALS);
+class UIScreenListener_ALS extends UIStrategyScreenListener config(ALS);
 
 var config bool bLog;
 
@@ -114,11 +114,14 @@ event OnRemovedFocus(UIScreen Screen)
 
 simulated function UpdateSquad(UISquadSelect SquadSelect)
 {
-	if (class'XComGameState_ALS'.static.UpdateSquad(`XCOMHQ.Squad))
+	if (IsInStrategy())
 	{
-		//PrintSquad(`XCOMHQ.Squad);
-		SquadSelect.bDirty = true;
-		SquadSelect.UpdateData();
+		if (class'XComGameState_ALS'.static.UpdateSquad(`XCOMHQ.Squad))
+		{
+			//PrintSquad(`XCOMHQ.Squad);
+			SquadSelect.bDirty = true;
+			SquadSelect.UpdateData();
+		}
 	}
 }
 

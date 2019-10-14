@@ -20,6 +20,8 @@ struct native EquipmentInfo
 	var EInventorySlot		 eSlot;
 };*/
 
+var config array<EInventorySlot> IgnoredSlots;
+
 
 //	================================================================================
 //	================================================================================
@@ -670,6 +672,7 @@ private static function bool FindBestReplacementItemForUnit(const XComGameState_
 				}
 			}
 		}
+
 		if (HighestTier != -999)
 		{
 			XComHQ.GetItemFromInventory(NewGameState, BestItemState.GetReference(), OutItemState);
@@ -757,16 +760,25 @@ private static function FillOutLoadoutItems(out LoadoutStruct Loadout, const arr
 
 	for (i = 0; i < AllItems.Length; i++)
 	{
-		`LOG("Saving into loadout: " @ AllItems[i].GetMyTemplate().FriendlyName, default.bLog, 'IRIALS');
+		if (default.IgnoredSlots.Find(AllItems[i].InventorySlot) != INDEX_NONE) 
+		{
+			`LOG("IGNORING " @ AllItems[i].GetMyTemplate().FriendlyName @ "because it's in a blacklisted slot: " @ AllItems[i].InventorySlot, default.bLog, 'IRIALS');
+			continue;
+		}
+		else
+		{
+			`LOG("Saving into loadout: " @ AllItems[i].GetMyTemplate().FriendlyName, default.bLog, 'IRIALS');
+		}
 
 		//	For some reason have to store all the values in a temporary struct 
 		//	instead of assigning it to Loadout.InventoryItems[i].EquipmentRef directly. I don't understand why.
+
 		EqInfo = EmptyEqInfo;
 		EqInfo.EquipmentRef = AllItems[i].GetReference();
 		EqInfo.eSlot = AllItems[i].InventorySlot;
 		Loadout.InventoryItems[i] = EqInfo;
 	}
-
+	
 	// Sort the loadout before saving it (armors need to be equipped first)
 	Loadout.InventoryItems.Sort(SortLoadoutItems);
 }
@@ -897,7 +909,7 @@ private function SaveLoadoutForUnit(const StateObjectReference UnitRef, optional
 
 	if (UnitState != none)
 	{
-		AllItems = UnitState.GetAllInventoryItems(none, false);	//	No CheckGameState, and DO NOT exclude PCS
+		AllItems = UnitState.GetAllInventoryItems(none, true);	//	No CheckGameState, and DO exclude PCS
 		Loadout.UnitRef = UnitRef;
 		FillOutLoadoutItems(Loadout, AllItems);
 		
@@ -912,14 +924,18 @@ private function SaveLoadoutForUnit(const StateObjectReference UnitRef, optional
 				}
 				else
 				{
-					`LOG("Updating loadout for unit:" @ UnitState.GetFullName() @ "saved items:" @ Loadout.InventoryItems.Length, default.bLog, 'IRIALS');
-					Loadouts[i] = Loadout;
-
+					//	Lock loadout, if necessary
 					if (SetLocked) 
 					{
-						Loadouts[i].bLocked = true;
+						Loadout.bLocked = true;
 					}
 
+					`LOG("Updating loadout for unit:" @ UnitState.GetFullName() @ "saved items:" @ Loadout.InventoryItems.Length @ "is locked: " @ Loadout.bLocked, default.bLog, 'IRIALS');
+
+					//	Remove existing loadout
+					Loadouts.Remove(i, 1);
+					//	Add new loadout to replace it.
+					Loadouts.AddItem(Loadout);
 					PrintLoadout(Loadout);
 				}
 				return;

@@ -82,3 +82,52 @@ exec function ALMUnequipBrokenItems()
 	}
 	`LOG("Finished.",, 'IRIALM');
 }
+
+static event OnLoadedSavedGameToStrategy() 
+{
+	local XComGameState						NewGameState;
+	local XComGameStateHistory				History;
+	local XComGameState_HeadquartersXCom	XComHQ;
+	local XComGameState_Unit				UnitState;
+	local StateObjectReference				UnitRef;
+	local XComGameState_Item				ItemState;
+	local bool								bChangedSomething;
+
+	History = `XCOMHISTORY;
+	NewGameState = class'XComGameStateContext_ChangeContainer'.static.CreateChangeState("Wiping Unknown Items For Units");
+
+	XComHQ = XComGameState_HeadquartersXCom(History.GetSingleGameStateObjectForClass(class'XComGameState_HeadquartersXCom'));
+	XComHQ = XComGameState_HeadquartersXCom(NewGameState.ModifyStateObject(class'XComGameState_HeadquartersXCom', XComHQ.ObjectID));
+
+	`LOG("Looking for broke items...",, 'IRIALM');
+	foreach XComHQ.Crew(UnitRef)
+	{
+		UnitState = XComGameState_Unit(History.GetGameStateForObjectID(UnitRef.ObjectID));
+		
+		if (UnitState != none && UnitState.IsSoldier())
+		{
+			UnitState = XComGameState_Unit(NewGameState.ModifyStateObject(class'XComGameState_Unit', UnitRef.ObjectID));
+			ItemState = UnitState.GetItemInSlot(eInvSlot_Unknown, NewGameState);
+
+			if (ItemState != none)
+			{
+				`LOG("Found item: " @ ItemState.GetMyTemplateName() @ "on unit: " @ UnitState.GetFullName(),, 'IRIALM');
+				if (UnitState.RemoveItemFromInventory(ItemState, NewGameState))
+				{
+					XComHQ.PutItemInInventory(NewGameState, ItemState);
+					bChangedSomething = true;
+					`LOG("Removed it.",, 'IRIALM');
+				}
+			}
+		}
+	}
+	if (bChangedSomething)
+	{	
+		`GAMERULES.SubmitGameState(NewGameState);
+	}
+	else
+	{
+		History.CleanupPendingGameState(NewGameState);
+	}
+	`LOG("Finished.",, 'IRIALM');
+}
