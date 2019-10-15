@@ -22,6 +22,8 @@ struct native EquipmentInfo
 
 var config array<EInventorySlot> IgnoredSlots;
 
+var config array<name> AllowedPrimaryWeaponCategoriesWithShield;
+
 
 //	================================================================================
 //	================================================================================
@@ -58,10 +60,11 @@ public static function bool UpdateSquad(const array<StateObjectReference> NewSqu
 	{
 		//	New Squad is bigger, means squad members were added.
 		ChangedUnitRefs = FindChangedUnits(NewSquad, StateObject.OldSquad);
-
-		StateObject.LoadLoadouts(ChangedUnitRefs, NewGameState);
 		StateObject.OldSquad = NewSquad;
 		`GAMERULES.SubmitGameState(NewGameState);
+		
+		StateObject.LoadLoadouts(ChangedUnitRefs);
+		
 		return true;
 	}
 
@@ -241,10 +244,11 @@ private static function XComGameState_ALS GetOrCreate(out XComGameState NewGameS
 
 //	Adjusted from XComGameState_Unit::EquipOldItems
 //	Attempts to equip the given Unit State with given Inventory Items. Items that are not currently available are automatically replaced with the next best thing.
-private static function EquipItemsOnUnit(out XComGameState_Unit NewUnitState, const array<EquipmentInfo> InventoryItems, out XComGameState NewGameState, const bool bLoadoutLocked)
+private static function EquipItemsOnUnit(const StateObjectReference UnitRef, const array<EquipmentInfo> InventoryItems, const bool bLoadoutLocked)
 {
 	local XComGameStateHistory				History;
 	local XComGameState_HeadquartersXCom	XComHQ;
+	local XComGameState_Unit				NewUnitState;
 	local EquipmentInfo						EqInfo;
 	local int								InvIndex;
 	local XComGameState_Item				ItemState;
@@ -252,10 +256,18 @@ private static function EquipItemsOnUnit(out XComGameState_Unit NewUnitState, co
 	local XComGameState_Item				EquippedItemState;
 	local XComGameState_Item				UnmodifiedItemState;
 	local array<XComGameState_Item>			ItemStates;
+	local XComGameState						NewGameState;
+	local bool								bChangedSomething;
 
 	History = `XCOMHISTORY;
+	NewGameState = class'XComGameStateContext_ChangeContainer'.static.CreateChangeState("Loading Loadout For Unit");
+
 	XComHQ = XComGameState_HeadquartersXCom(History.GetSingleGameStateObjectForClass(class'XComGameState_HeadquartersXCom'));
 	XComHQ = XComGameState_HeadquartersXCom(NewGameState.ModifyStateObject(class'XComGameState_HeadquartersXCom', XComHQ.ObjectID));
+
+	NewUnitState = XComGameState_Unit(NewGameState.ModifyStateObject(class'XComGameState_Unit', UnitRef.ObjectID));
+
+	if (NewUnitState == none) return;
 
 	//	First, unequip all currently equipped Multi Slot items from the soldier and put them in HQ Inventory.
 	`LOG("=======================================================", default.bLog, 'IRIALM');
@@ -274,6 +286,7 @@ private static function EquipItemsOnUnit(out XComGameState_Unit NewUnitState, co
 					{
 						`LOG("SUCCESSFULLY removed item: " @ ItemState.GetMyTemplateName() @ "from Multi Slot: " @ EqInfo.eSlot, default.bLog, 'IRIALM');
 						XComHQ.PutItemInInventory(NewGameState, ItemState);
+						bChangedSomething = true;
 					}
 					else
 					{
@@ -283,16 +296,31 @@ private static function EquipItemsOnUnit(out XComGameState_Unit NewUnitState, co
 			}
 		}
 	}
+	if (bChangedSomething)
+	{
+		`GAMERULES.SubmitGameState(NewGameState);
+	}
+	else
+	{
+		History.CleanupPendingGameState(NewGameState);
+	}
 	ItemState = none;
 	`LOG("----------------------------------------------------------", default.bLog, 'IRIALM');
 
 	foreach InventoryItems(EqInfo)
 	{
+		//	Prep gamestates for changes. For every item!
+		NewGameState = class'XComGameStateContext_ChangeContainer'.static.CreateChangeState("Loading Loadout For Unit");
+		XComHQ = XComGameState_HeadquartersXCom(NewGameState.ModifyStateObject(class'XComGameState_HeadquartersXCom', XComHQ.ObjectID));
+		NewUnitState = XComGameState_Unit(NewGameState.ModifyStateObject(class'XComGameState_Unit', UnitRef.ObjectID));
+
+		//	Begin
 		HistoryItemState = XComGameState_Item(History.GetGameStateForObjectID(EqInfo.EquipmentRef.ObjectID));
 		if (HistoryItemState == none)
 		{
 			`LOG("CRITICAL ERROR, FAILED to  retrieve saved item from History! Cannot attempt to equip this part of the loadout. END.", default.bLog, 'IRIALM');
 			`redscreen("ALM Error, could not retrieve saved item from History! -Iridar, ID: " @ EqInfo.EquipmentRef.ObjectID);
+			History.CleanupPendingGameState(NewGameState);
 			continue;
 		}
 		else
@@ -302,8 +330,14 @@ private static function EquipItemsOnUnit(out XComGameState_Unit NewUnitState, co
 			if (HistoryItemState.GetMyTemplate().iItemSize < 1) 
 			{
 				`LOG("This item is sizeless, skipping. END.", default.bLog, 'IRIALM');
+				History.CleanupPendingGameState(NewGameState);
 				continue;
 			}
+		}
+
+		if (X2WeaponTemplate(HistoryItemState.GetMyTemplate()).WeaponCat == 'Shield')
+		{
+			CanAddItemToInventorySimulation(EqInfo.eSlot, HistoryItemState.GetMyTemplate(), NewUnitState);
 		}
 		
 		// Check if the slot is currently occupied, but only if it's not a multi item slot.
@@ -317,6 +351,7 @@ private static function EquipItemsOnUnit(out XComGameState_Unit NewUnitState, co
 				|| !EquippedItemState.HasBeenModified() && !HistoryItemState.HasBeenModified() && EquippedItemState.GetMyTemplateName() == HistoryItemState.GetMyTemplateName())	//	Equipped item is basically the same thing as the item in the saved loadout.
 				{
 					`LOG("Soldier already has the item we want: " @ EquippedItemState.GetMyTemplateName() @ "in" @ EquippedItemState.InventorySlot @ ", skipping. END.", default.bLog, 'IRIALM');
+					History.CleanupPendingGameState(NewGameState);
 					continue;
 				}
 				else
@@ -402,12 +437,67 @@ private static function EquipItemsOnUnit(out XComGameState_Unit NewUnitState, co
 		if (NewUnitState.AddItemToInventory(ItemState, EqInfo.eSlot, NewGameState))
 		{
 			`LOG("SUCCESSFULLY equipped item:" @ ItemState.GetMyTemplateName() @ "in slot: " @ EqInfo.eSlot, default.bLog, 'IRIALM');
+			`GAMERULES.SubmitGameState(NewGameState);
 		}
 		else
 		{
 			`LOG("FAILED to equip item: " @ ItemState.GetMyTemplateName() @ "into slot: " @ EqInfo.eSlot @ ". END.", default.bLog, 'IRIALM');
+			History.CleanupPendingGameState(NewGameState);
 		}
 	}
+}
+
+static function CanAddItemToInventorySimulation(const EInventorySlot Slot, const X2ItemTemplate ItemTemplate, XComGameState_Unit UnitState)
+{
+	local X2WeaponTemplate			WeaponTemplate;
+	local bool						bEvaluate;
+	local XComGameState_Item		PrimaryWeapon, SecondaryWeapon;
+	local string					DisabledReason;
+	local int						bCanAddItem;
+
+	`LOG("Simulating CanaddItemToInventory: ##############################################",, 'IRIALM');
+
+	WeaponTemplate = X2WeaponTemplate(ItemTemplate);
+	PrimaryWeapon = UnitState.GetItemInSlot(eInvSlot_PrimaryWeapon);
+	SecondaryWeapon = UnitState.GetItemInSlot(eInvSlot_SecondaryWeapon);
+
+	`LOG("Primary weapon: " @ PrimaryWeapon.GetMyTemplateName(),, 'IRIALM');
+	`LOG("Secondary weapon: " @ PrimaryWeapon.GetMyTemplateName(),, 'IRIALM');
+	`LOG("Attempting to equip: " @ WeaponTemplate.DataName @ "into: " @ Slot,, 'IRIALM');
+
+	if (X2WeaponTemplate(SecondaryWeapon.GetMyTemplate()).WeaponCat == 'Shield' && WeaponTemplate.InventorySlot == eInvSlot_PrimaryWeapon)
+	{
+		`LOG("Attempting to equip a primary weapon on a soldier that has Ballistic Shield equipped in secondary slot.",, 'IRIALM');
+		if (default.AllowedPrimaryWeaponCategoriesWithShield.Find(WeaponTemplate.WeaponCat) == INDEX_NONE)
+		{
+			bCanAddItem = 0;
+			DisabledReason = "category restricted";
+			bEvaluate = true;
+			`LOG("Permission to equip is DENIED, reason: " @ DisabledReason,, 'IRIALM');
+		}
+		else
+		{
+			`LOG("Permission to equip is granted.",, 'IRIALM');
+		}
+	}
+
+	if (WeaponTemplate.InventorySlot == eInvSlot_SecondaryWeapon && WeaponTemplate.WeaponCat == 'Shield')
+	{
+		`LOG("Attempting to equip a Ballistic Shield into a secondary slot.",, 'IRIALM');
+		if (default.AllowedPrimaryWeaponCategoriesWithShield.Find(X2WeaponTemplate(PrimaryWeapon.GetMyTemplate()).WeaponCat) == INDEX_NONE)
+		{
+			DisabledReason = "category restricted";
+			bEvaluate = true;
+			`LOG("Permission to equip is DENIED, reason: " @ DisabledReason,, 'IRIALM');
+		}
+		else
+		{
+			`LOG("Permission to equip is granted.",, 'IRIALM');
+		}
+	}
+
+
+	`LOG("END Simulation: ##############################################",, 'IRIALM');
 }
 
 private static function XComGameState_Item FindUnmodifiedItem(out XComGameState_HeadquartersXCom XComHQ, const X2ItemTemplate ItemTemplate, out XComGameState NewGameState)
@@ -874,37 +964,34 @@ private static function PrintLoadout(const LoadoutStruct Loadout)
 //	================================================================================
 //	For calling only from inside a state object!
 
-private function LoadLoadouts(const array<StateObjectReference> UnitRefs, out XComGameState NewGameState)
+private function LoadLoadouts(const array<StateObjectReference> UnitRefs)
 {
 	local StateObjectReference UnitRef;
 
 	foreach UnitRefs(UnitRef)
 	{
-		LoadLoadoutForUnit(UnitRef, NewGameState);
+		LoadLoadoutForUnit(UnitRef);
 	}
 }
 
-private function LoadLoadoutForUnit(const StateObjectReference UnitRef, out XComGameState NewGameState)
+private function LoadLoadoutForUnit(const StateObjectReference UnitRef)
 {
-	local XComGameState_Unit NewUnitState;
 	local int i;
 
-	NewUnitState = XComGameState_Unit(NewGameState.ModifyStateObject(class'XComGameState_Unit', UnitRef.ObjectID));
-
-	if (NewUnitState != none)
+	if (UnitRef.ObjectID != 0)
 	{
 		//	Update existing loadout, if it exists.
 		for (i = 0; i < Loadouts.Length; i++)
 		{
 			if (Loadouts[i].UnitRef == UnitRef)
 			{
-				`LOG("Attempting to equip saved loadout on unit:" @ NewUnitState.GetFullName(), default.bLog, 'IRIALS');
+				`LOG("Attempting to equip saved loadout on unit:" @ XComGameState_Unit(`XCOMHISTORY.GetGameStateForObjectID(UnitRef.ObjectID)).GetFullName(), default.bLog, 'IRIALS');
 				PrintLoadout(Loadouts[i]);
-				EquipItemsOnUnit(NewUnitState, Loadouts[i].InventoryItems, NewGameState, Loadouts[i].bLocked);
+				EquipItemsOnUnit(UnitRef, Loadouts[i].InventoryItems, Loadouts[i].bLocked);
 				return;
 			}
 		}
-		`LOG("No saved loadout for unit:" @ NewUnitState.GetFullName(), default.bLog, 'IRIALS');
+		`LOG("No saved loadout for unit:" @ XComGameState_Unit(`XCOMHISTORY.GetGameStateForObjectID(UnitRef.ObjectID)).GetFullName(), default.bLog, 'IRIALS');
 	}
 }
 
