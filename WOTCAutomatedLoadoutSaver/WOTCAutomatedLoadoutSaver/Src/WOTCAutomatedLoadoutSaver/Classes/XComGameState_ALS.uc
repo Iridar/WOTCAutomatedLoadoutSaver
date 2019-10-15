@@ -241,18 +241,17 @@ private static function XComGameState_ALS GetOrCreate(out XComGameState NewGameS
 
 //	Adjusted from XComGameState_Unit::EquipOldItems
 //	Attempts to equip the given Unit State with given Inventory Items. Items that are not currently available are automatically replaced with the next best thing.
-private static function EquipItemsOnUnit(out XComGameState_Unit NewUnitState, const array<EquipmentInfo> InventoryItems, out XComGameState NewGameState)
+private static function EquipItemsOnUnit(out XComGameState_Unit NewUnitState, const array<EquipmentInfo> InventoryItems, out XComGameState NewGameState, const bool bLoadoutLocked)
 {
 	local XComGameStateHistory				History;
 	local XComGameState_HeadquartersXCom	XComHQ;
 	local EquipmentInfo						EqInfo;
 	local int								InvIndex;
 	local XComGameState_Item				ItemState;
+	local XComGameState_Item				HistoryItemState;
 	local XComGameState_Item				EquippedItemState;
-	local XComGameState_Item				UnequipItemState;
+	local XComGameState_Item				UnmodifiedItemState;
 	local array<XComGameState_Item>			ItemStates;
-	local bool								bFoundExactMatch;
-	local bool								bNoUnmodifiedItem;
 
 	History = `XCOMHISTORY;
 	XComHQ = XComGameState_HeadquartersXCom(History.GetSingleGameStateObjectForClass(class'XComGameState_HeadquartersXCom'));
@@ -284,162 +283,146 @@ private static function EquipItemsOnUnit(out XComGameState_Unit NewUnitState, co
 			}
 		}
 	}
+	ItemState = none;
 	`LOG("----------------------------------------------------------", default.bLog, 'IRIALM');
 
 	foreach InventoryItems(EqInfo)
 	{
-		//	DEBUGGING ONLY
-		ItemState = XComGameState_Item(History.GetGameStateForObjectID(EqInfo.EquipmentRef.ObjectID));
-		`LOG("Begin search for equipment item: " @ ItemState.GetMyTemplateName(), default.bLog, 'IRIALM');
-		//	END DEBUGGING
-
-		// Check if the saved item is already equipped.
-		EquippedItemState = NewUnitState.GetItemInSlot(EqInfo.eSlot, NewGameState);
-		if (EquippedItemState != none && EquippedItemState.ObjectID == EqInfo.EquipmentRef.ObjectID)
+		HistoryItemState = XComGameState_Item(History.GetGameStateForObjectID(EqInfo.EquipmentRef.ObjectID));
+		if (HistoryItemState == none)
 		{
-			`LOG("Soldier already has: " @ EquippedItemState.GetMyTemplateName() @ "equipped, skipping. END.", default.bLog, 'IRIALM');
+			`LOG("CRITICAL ERROR, FAILED to  retrieve saved item from History! Cannot attempt to equip this part of the loadout. END.", default.bLog, 'IRIALM');
+			`redscreen("ALM Error, could not retrieve saved item from History! -Iridar, ID: " @ EqInfo.EquipmentRef.ObjectID);
 			continue;
-		}
-
-		//	Try to find the exact item saved in the loadout.
-		bFoundExactMatch = false;
-		InvIndex = XComHQ.Inventory.Find('ObjectID', EqInfo.EquipmentRef.ObjectID);
-		if(InvIndex != INDEX_NONE)
-		{
-			// Found the exact item in the inventory, so it wasn't equipped by another soldier
-			`LOG("SUCCESSFULLY found exact match in HQ Inventory.", default.bLog, 'IRIALM');
-			XComHQ.GetItemFromInventory(NewGameState, XComHQ.Inventory[InvIndex], ItemState);
-			bFoundExactMatch = true;
 		}
 		else
 		{
-			`LOG("FAILED to find exact match in HQ Inventory, looking for an unmodified instance.", default.bLog, 'IRIALM');
-			bNoUnmodifiedItem = false;
-			// Did not find the object in the HQ inventory, it must be equipped on someone else.
-			// Get the latest available state from History and ...
-			ItemState = XComGameState_Item(History.GetGameStateForObjectID(EqInfo.EquipmentRef.ObjectID));
-			if (ItemState == none) 
-			{
-				`LOG("CRITICAL ERROR, FAILED to  retrieve saved item from History! Cannot begin search for unmodified item. END.", default.bLog, 'IRIALM');
-				`redscreen("ALM Error, could not retrieve saved item from History! -Iridar");
-				continue;
-			}
-
+			`LOG("Begin search for: " @ HistoryItemState.GetMyTemplateName() @ " for " @ EqInfo.eSlot, default.bLog, 'IRIALM');
 			//	Skip sizeless items
-			if (ItemState.GetMyTemplate().iItemSize < 1) 
+			if (HistoryItemState.GetMyTemplate().iItemSize < 1) 
 			{
 				`LOG("This item is sizeless, skipping. END.", default.bLog, 'IRIALM');
 				continue;
 			}
-
-			//	... and try to find an unmodified item to replace it.
-			ItemState = FindUnmodifiedItem(XComHQ, ItemState.GetMyTemplateName(), NewGameState);
-			if (ItemState == none)
-			{
-				`LOG("CRITICAL ERROR, FAILED to find unmodified version. Looking for a replacement.", default.bLog, 'IRIALM');
-				bNoUnmodifiedItem = true;
-				ItemState = XComGameState_Item(History.GetGameStateForObjectID(EqInfo.EquipmentRef.ObjectID));
-				if (ItemState == none) 
-				{
-					`LOG("CRITICAL ERROR, FAILED to  retrieve saved item from History! Cannot begin search for a replacement item. END.", default.bLog, 'IRIALM');
-					`redscreen("ALM Error, could not retrieve saved item from History! -Iridar");
-					continue;
-				}
-			}
-			else
-			{
-				`LOG("SUCCESSFULLY found unmodified instance in HQ Inventory.", default.bLog, 'IRIALM');
-			}
 		}
-
-		if (NewUnitState.CanAddItemToInventory(ItemState.GetMyTemplate(), EqInfo.eSlot, NewGameState, ItemState.Quantity, ItemState))
+		
+		// Check if the slot is currently occupied, but only if it's not a multi item slot.
+		if (!IsSlotMultiItem(EqInfo.eSlot))
 		{
-			//	BEGIN COPYPASTE
-			if (!bFoundExactMatch)
+			EquippedItemState = NewUnitState.GetItemInSlot(EqInfo.eSlot, NewGameState);
+			if (EquippedItemState != none)
 			{
-				`LOG("Attempting to replace the unmodified item with a better version.", default.bLog, 'IRIALM');
-				if (FindBestReplacementItemForUnit(NewUnitState, ItemState, EqInfo.eSlot, XComHQ, NewGameState))
+				// Check if the equipped item is the one we want to have equipped.
+				if (EquippedItemState.ObjectID == EqInfo.EquipmentRef.ObjectID	//	Equipped item is an exact match
+				|| !EquippedItemState.HasBeenModified() && !HistoryItemState.HasBeenModified() && EquippedItemState.GetMyTemplateName() == HistoryItemState.GetMyTemplateName())	//	Equipped item is basically the same thing as the item in the saved loadout.
 				{
-					`LOG("SUCCESSFULLY found a better replacement: " @ ItemState.GetMyTemplateName(), default.bLog, 'IRIALM');
+					`LOG("Soldier already has the item we want: " @ EquippedItemState.GetMyTemplateName() @ "in" @ EquippedItemState.InventorySlot @ ", skipping. END.", default.bLog, 'IRIALM');
+					continue;
 				}
 				else
 				{
-					`LOG("FAILED to find a better replacement.", default.bLog, 'IRIALM');
-					if (bNoUnmodifiedItem)
+					`LOG(EqInfo.eSlot @ "is occupied by: " @ EquippedItemState.GetMyTemplateName() @", attempting to unequip.", default.bLog, 'IRIALM');
+					if (NewUnitState.RemoveItemFromInventory(EquippedItemState, NewGameState))
 					{
-						`LOG("Cannot use original unmodified item. Skipping this part of the loadout. END.", default.bLog, 'IRIALM');
-						continue;
+						`LOG("SUCCESSFULY uneqipped the item. Putting it into HQ Inventory and proceeding.", default.bLog, 'IRIALM');
+						XComHQ.PutItemInInventory(NewGameState, EquippedItemState);
 					}
 					else
 					{
-						`LOG("Using the original unmodified item.", default.bLog, 'IRIALM');
-					}
-				}
-			}
-			// END COPYPASTE
-
-			if (NewUnitState.AddItemToInventory(ItemState, EqInfo.eSlot, NewGameState))
-			{
-				`LOG("SUCCESSFULLY equipped it on first attempt.", default.bLog, 'IRIALM');
-			}
-			else
-			{
-				`LOG("FAILED to equip it on first attempt, slot must be occupied.", default.bLog, 'IRIALM');
-			}
-		}
-		else	//	If we can't add item to inventory, it must be because the slot is occupied by something else
-		{
-			//	Unequip it from unit and put in HQ Inventory
-			UnequipItemState = NewUnitState.GetItemInSlot(EqInfo.eSlot, NewGameState);
-			if (UnequipItemState == none)
-			{
-				`LOG("Slot was empty, must be unable to equip for some other reason. I will put the item I wanted to equip back into HQ inventory and move on. END.", default.bLog, 'IRIALM');
-				XComHQ.PutItemInInventory(NewGameState, ItemState);
-				continue;
-			}
-			else
-			{
-				`LOG("Slot was occupied by the item: " @ UnequipItemState.GetMyTemplateName() @ ", attempting to unequip.", default.bLog, 'IRIALM');
-			
-				UnequipItemState = XComGameState_Item(NewGameState.ModifyStateObject(class'XComGameState_Item', UnequipItemState.ObjectID));
-				if (NewUnitState.RemoveItemFromInventory(UnequipItemState, NewGameState))
-				{
-					`LOG("SUCCESSFULY uneqipped the item. Putting it into HQ Inventory.", default.bLog, 'IRIALM');
-					XComHQ.PutItemInInventory(NewGameState, UnequipItemState);
-
-					//	BEGIN COPYPASTE
-					if (!bFoundExactMatch)
-					{
-						`LOG("Attempting to replace the unmodified item with a better version.", default.bLog, 'IRIALM');
-						if (FindBestReplacementItemForUnit(NewUnitState, ItemState, EqInfo.eSlot, XComHQ, NewGameState))
+						if (NewUnitState.CanAddItemToInventory(HistoryItemState.GetMyTemplate(), EqInfo.eSlot, NewGameState, HistoryItemState.Quantity, HistoryItemState))
 						{
-							`LOG("SUCCESSFULLY found a better replacement: " @ ItemState.GetMyTemplateName(), default.bLog, 'IRIALM');
+							`LOG("The slot is occupied, but it's still somehow possible to equip: " @ HistoryItemState.GetMyTemplateName() @ "into it. Whatever, proceeding.", default.bLog, 'IRIALM');
 						}
 						else
 						{
-							`LOG("FAILED to find a better replacement, using the original unmodified item.", default.bLog, 'IRIALM');
+							`LOG("CRITICAL ERROR, FAILED to uneqip the item. CANNOT proceed with this slot: " @ EquippedItemState.InventorySlot @ " END.", default.bLog, 'IRIALM');
 						}
-					}
-					// END COPYPASTE
-
-					if (NewUnitState.AddItemToInventory(ItemState, EqInfo.eSlot, NewGameState))
-					{
-						`LOG("SUCCESSFULY eqipped the item: " @ ItemState.GetMyTemplateName() @ "on the soldier on second attempt. END.", default.bLog, 'IRIALM');
-					}
-					else
-					{
-						`LOG("CRITICAL ERROR, could not equip eqipped the item: " @ ItemState.GetMyTemplateName() @ "on the soldier. Equipping the unequipped item back on the unit and moving on.", default.bLog, 'IRIALM');
-						XComHQ.GetItemFromInventory(NewGameState, UnequipItemState.GetReference(), UnequipItemState);
-						NewUnitState.AddItemToInventory(UnequipItemState, EqInfo.eSlot, NewGameState);
-						continue;
 					}
 				}
 			}
+			else
+			{
+				`LOG(EqInfo.eSlot @ "is currently empty, proceeding.", default.bLog, 'IRIALM');
+			}
+		}
+
+		//	Try to find the exact item saved in the loadout in HQ Inventory.
+		InvIndex = XComHQ.Inventory.Find('ObjectID', EqInfo.EquipmentRef.ObjectID);
+		if(InvIndex != INDEX_NONE)
+		{
+			// Found the exact item in the inventory, so it wasn't equipped by another soldier
+			XComHQ.GetItemFromInventory(NewGameState, XComHQ.Inventory[InvIndex], ItemState);
+			`LOG("SUCCESSFULLY found exact match in HQ Inventory: " @ ItemState.GetMyTemplateName(), default.bLog, 'IRIALM');
+		}
+		else
+		{
+			`LOG("FAILED to find exact match in HQ Inventory, looking for an unmodified instance of the same item.", default.bLog, 'IRIALM');
+
+			// Did not find the object in the HQ inventory, it must be equipped on someone else. Try to find an unmodified item to replace it.
+			UnmodifiedItemState = FindUnmodifiedItem(XComHQ, HistoryItemState.GetMyTemplate(), NewGameState);
+			if (UnmodifiedItemState == none)
+			{
+				`LOG("CRITICAL ERROR, FAILED to find unmodified version. Looking for a replacement.", default.bLog, 'IRIALM');
+				
+				ItemState = FindBestReplacementItemForUnit(NewUnitState, HistoryItemState.GetMyTemplate(), EqInfo.eSlot, XComHQ, NewGameState);
+
+				if (ItemState == none)
+				{
+					`LOG("CRITICAL ERROR, FAILED to find a replacement for a missing unmodified item. CANNOT proceed with this part of the loadout. END.", default.bLog, 'IRIALM');
+				}
+				else
+				{
+					`LOG("SUCCESSFULLY found a replacement for the missing unmodified item: " @ HistoryItemState.GetMyTemplateName() @ ". Proceeding with the replacement item: " @ ItemState.GetMyTemplateName(), default.bLog, 'IRIALM');
+				}
+			}
+			else
+			{
+				if (bLoadoutLocked)
+				{
+					`LOG("SUCCESSFULLY found unmodified instance in HQ Inventory. Loadout is locked, so proceeding with the unmodified version.", default.bLog, 'IRIALM');
+					ItemState = UnmodifiedItemState;
+				}
+				else
+				{
+					`LOG("SUCCESSFULLY found unmodified instance in HQ Inventory. Loadout is not locked, so looking for a better version.", default.bLog, 'IRIALM');
+					ItemState = FindBestReplacementItemForUnit(NewUnitState, UnmodifiedItemState.GetMyTemplate(), EqInfo.eSlot, XComHQ, NewGameState);
+					if (ItemState == none)
+					{
+						`LOG("FAILED to find a better version of the unmodified item: " @ UnmodifiedItemState.GetMyTemplateName() @ ", proceeding with the unmodified item.", default.bLog, 'IRIALM');
+						ItemState = UnmodifiedItemState;
+					}
+					else
+					{
+						`LOG("SUCCESSFULLY found a replacement for the existing unmodified item: " @ HistoryItemState.GetMyTemplateName() @ ". Proceeding with the replacement item: " @ ItemState.GetMyTemplateName(), default.bLog, 'IRIALM');
+					}
+				}
+			}			
+		}
+
+		if (NewUnitState.AddItemToInventory(ItemState, EqInfo.eSlot, NewGameState))
+		{
+			`LOG("SUCCESSFULLY equipped item:" @ ItemState.GetMyTemplateName() @ "in slot: " @ EqInfo.eSlot, default.bLog, 'IRIALM');
+		}
+		else
+		{
+			`LOG("FAILED to equip item: " @ ItemState.GetMyTemplateName() @ "into slot: " @ EqInfo.eSlot @ ". END.", default.bLog, 'IRIALM');
 		}
 	}
 }
 
-private static function XComGameState_Item FindUnmodifiedItem(const XComGameState_HeadquartersXCom XComHQ, name TemplateName, out XComGameState NewGameState)
+private static function XComGameState_Item FindUnmodifiedItem(out XComGameState_HeadquartersXCom XComHQ, const X2ItemTemplate ItemTemplate, out XComGameState NewGameState)
+{
+	local XComGameState_Item	ItemState;
+
+	if (XComHQ.HasUnModifiedItem(NewGameState, ItemTemplate, ItemState))
+	{
+		//	This will prep the Item State for modification and remove it from HQ inventory
+		XComHQ.GetItemFromInventory(NewGameState, ItemState.GetReference(), ItemState);
+		return ItemState;
+	}
+	return none;	
+}
+/*
 {
 	local XComGameStateHistory	History;
 	local XComGameState_Item	ItemState;
@@ -460,6 +443,7 @@ private static function XComGameState_Item FindUnmodifiedItem(const XComGameStat
 	}
 	return none;
 }
+*/
 
 private static function bool IsSlotMultiItem(EInventorySlot Slot)
 {
@@ -627,7 +611,7 @@ private static function bool IsSlotMultiItem(EInventorySlot Slot)
 
 //	Find the next best thing to the item that is not currently available for equipping
 
-private static function bool FindBestReplacementItemForUnit(const XComGameState_Unit UnitState, out XComGameState_Item OutItemState, const EInventorySlot eSlot, out XComGameState_HeadquartersXCom XComHQ, out XComGameState NewGameState)
+private static function XComGameState_Item FindBestReplacementItemForUnit(const XComGameState_Unit UnitState, const X2ItemTemplate OrigItemTemplate, const EInventorySlot eSlot, out XComGameState_HeadquartersXCom XComHQ, out XComGameState NewGameState)
 {
 	local X2WeaponTemplate		OrigWeaponTemplate;
 	local X2WeaponTemplate		WeaponTemplate;
@@ -644,7 +628,7 @@ private static function bool FindBestReplacementItemForUnit(const XComGameState_
 	HighestTier = -999;
 	History = `XCOMHISTORY;
 
-	OrigWeaponTemplate = X2WeaponTemplate(OutItemState.GetMyTemplate());
+	OrigWeaponTemplate = X2WeaponTemplate(OrigItemTemplate);
 	if (OrigWeaponTemplate != none)
 	{
 		foreach XComHQ.Inventory(ItemRef)
@@ -665,14 +649,8 @@ private static function bool FindBestReplacementItemForUnit(const XComGameState_
 				}
 			}
 		}
-		if (HighestTier != -999)
-		{
-			XComHQ.GetItemFromInventory(NewGameState, BestItemState.GetReference(), OutItemState);
-			return true;
-		}
-		return false;
 	}
-	OrigArmorTemplate = X2ArmorTemplate(OutItemState.GetMyTemplate());
+	OrigArmorTemplate = X2ArmorTemplate(OrigItemTemplate);
 	if (OrigArmorTemplate != none)
 	{
 		foreach XComHQ.Inventory(ItemRef)
@@ -693,15 +671,8 @@ private static function bool FindBestReplacementItemForUnit(const XComGameState_
 				}
 			}
 		}
-
-		if (HighestTier != -999)
-		{
-			XComHQ.GetItemFromInventory(NewGameState, BestItemState.GetReference(), OutItemState);
-			return true;
-		}
-		return false;
 	}
-	OrigEquipmentTemplate = X2EquipmentTemplate(OutItemState.GetMyTemplate());
+	OrigEquipmentTemplate = X2EquipmentTemplate(OrigItemTemplate);
 	if (OrigEquipmentTemplate != none)
 	{
 		foreach XComHQ.Inventory(ItemRef)
@@ -722,16 +693,16 @@ private static function bool FindBestReplacementItemForUnit(const XComGameState_
 				}
 			}
 		}
-		if (HighestTier != -999)
-		{
-			XComHQ.GetItemFromInventory(NewGameState, BestItemState.GetReference(), OutItemState);
-			return true;
-		}
-		return false;
 	}
-	//	Not a valid template, don't do anything.
-	`LOG("FAILED to find a better replacement because the item was not a Weapon, Armor or Equipment template.", default.bLog, 'IRIALM');
-	return false;
+	if (HighestTier != -999)
+	{
+		XComHQ.GetItemFromInventory(NewGameState, BestItemState.GetReference(), BestItemState);
+		return BestItemState;
+	}
+	else
+	{
+		return none;
+	}
 }
 
 
@@ -929,7 +900,7 @@ private function LoadLoadoutForUnit(const StateObjectReference UnitRef, out XCom
 			{
 				`LOG("Attempting to equip saved loadout on unit:" @ NewUnitState.GetFullName(), default.bLog, 'IRIALS');
 				PrintLoadout(Loadouts[i]);
-				EquipItemsOnUnit(NewUnitState, Loadouts[i].InventoryItems, NewGameState);
+				EquipItemsOnUnit(NewUnitState, Loadouts[i].InventoryItems, NewGameState, Loadouts[i].bLocked);
 				return;
 			}
 		}
