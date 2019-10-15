@@ -334,11 +334,6 @@ private static function EquipItemsOnUnit(const StateObjectReference UnitRef, con
 				continue;
 			}
 		}
-
-		if (X2WeaponTemplate(HistoryItemState.GetMyTemplate()).WeaponCat == 'Shield')
-		{
-			CanAddItemToInventorySimulation(EqInfo.eSlot, HistoryItemState.GetMyTemplate(), NewUnitState);
-		}
 		
 		// Check if the slot is currently occupied, but only if it's not a multi item slot.
 		if (!IsSlotMultiItem(EqInfo.eSlot))
@@ -371,6 +366,8 @@ private static function EquipItemsOnUnit(const StateObjectReference UnitRef, con
 						else
 						{
 							`LOG("CRITICAL ERROR, FAILED to uneqip the item. CANNOT proceed with this slot: " @ EquippedItemState.InventorySlot @ " END.", default.bLog, 'IRIALM');
+							History.CleanupPendingGameState(NewGameState);
+							continue;
 						}
 					}
 				}
@@ -404,6 +401,8 @@ private static function EquipItemsOnUnit(const StateObjectReference UnitRef, con
 				if (ItemState == none)
 				{
 					`LOG("CRITICAL ERROR, FAILED to find a replacement for a missing unmodified item. CANNOT proceed with this part of the loadout. END.", default.bLog, 'IRIALM');
+					History.CleanupPendingGameState(NewGameState);
+					continue;
 				}
 				else
 				{
@@ -445,59 +444,6 @@ private static function EquipItemsOnUnit(const StateObjectReference UnitRef, con
 			History.CleanupPendingGameState(NewGameState);
 		}
 	}
-}
-
-static function CanAddItemToInventorySimulation(const EInventorySlot Slot, const X2ItemTemplate ItemTemplate, XComGameState_Unit UnitState)
-{
-	local X2WeaponTemplate			WeaponTemplate;
-	local bool						bEvaluate;
-	local XComGameState_Item		PrimaryWeapon, SecondaryWeapon;
-	local string					DisabledReason;
-	local int						bCanAddItem;
-
-	`LOG("Simulating CanaddItemToInventory: ##############################################",, 'IRIALM');
-
-	WeaponTemplate = X2WeaponTemplate(ItemTemplate);
-	PrimaryWeapon = UnitState.GetItemInSlot(eInvSlot_PrimaryWeapon);
-	SecondaryWeapon = UnitState.GetItemInSlot(eInvSlot_SecondaryWeapon);
-
-	`LOG("Primary weapon: " @ PrimaryWeapon.GetMyTemplateName(),, 'IRIALM');
-	`LOG("Secondary weapon: " @ PrimaryWeapon.GetMyTemplateName(),, 'IRIALM');
-	`LOG("Attempting to equip: " @ WeaponTemplate.DataName @ "into: " @ Slot,, 'IRIALM');
-
-	if (X2WeaponTemplate(SecondaryWeapon.GetMyTemplate()).WeaponCat == 'Shield' && WeaponTemplate.InventorySlot == eInvSlot_PrimaryWeapon)
-	{
-		`LOG("Attempting to equip a primary weapon on a soldier that has Ballistic Shield equipped in secondary slot.",, 'IRIALM');
-		if (default.AllowedPrimaryWeaponCategoriesWithShield.Find(WeaponTemplate.WeaponCat) == INDEX_NONE)
-		{
-			bCanAddItem = 0;
-			DisabledReason = "category restricted";
-			bEvaluate = true;
-			`LOG("Permission to equip is DENIED, reason: " @ DisabledReason,, 'IRIALM');
-		}
-		else
-		{
-			`LOG("Permission to equip is granted.",, 'IRIALM');
-		}
-	}
-
-	if (WeaponTemplate.InventorySlot == eInvSlot_SecondaryWeapon && WeaponTemplate.WeaponCat == 'Shield')
-	{
-		`LOG("Attempting to equip a Ballistic Shield into a secondary slot.",, 'IRIALM');
-		if (default.AllowedPrimaryWeaponCategoriesWithShield.Find(X2WeaponTemplate(PrimaryWeapon.GetMyTemplate()).WeaponCat) == INDEX_NONE)
-		{
-			DisabledReason = "category restricted";
-			bEvaluate = true;
-			`LOG("Permission to equip is DENIED, reason: " @ DisabledReason,, 'IRIALM');
-		}
-		else
-		{
-			`LOG("Permission to equip is granted.",, 'IRIALM');
-		}
-	}
-
-
-	`LOG("END Simulation: ##############################################",, 'IRIALM');
 }
 
 private static function XComGameState_Item FindUnmodifiedItem(out XComGameState_HeadquartersXCom XComHQ, const X2ItemTemplate ItemTemplate, out XComGameState NewGameState)
