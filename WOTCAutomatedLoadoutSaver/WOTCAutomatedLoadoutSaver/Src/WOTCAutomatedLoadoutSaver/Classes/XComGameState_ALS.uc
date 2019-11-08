@@ -280,7 +280,8 @@ private static function EquipItemsOnUnit(const StateObjectReference UnitRef, con
 			foreach ItemStates(ItemState)
 			{
 				//	Skip sizeless items, like XPad (hacking pad)
-				if (ItemState.GetMyTemplate().iItemSize > 0)
+				if (ItemState.GetMyTemplate().iItemSize > 0 &&
+					!IsItemInLoadout(ItemState, InventoryItems)) // Don't unequip the item if it's part of the loadout.
 				{
 					if (NewUnitState.RemoveItemFromInventory(ItemState, NewGameState))
 					{
@@ -428,6 +429,7 @@ private static function EquipItemsOnUnit(const StateObjectReference UnitRef, con
 					else
 					{
 						`LOG("SUCCESSFULLY found a replacement for the existing unmodified item: " @ HistoryItemState.GetMyTemplateName() @ ". Proceeding with the replacement item: " @ ItemState.GetMyTemplateName(), default.bLog, 'IRIALM');
+						XComHQ.PutItemInInventory(NewGameState, UnmodifiedItemState);
 					}
 				}
 			}			
@@ -457,6 +459,25 @@ private static function XComGameState_Item FindUnmodifiedItem(out XComGameState_
 		return ItemState;
 	}
 	return none;	
+}
+
+private static function bool IsItemInLoadout(const XComGameState_Item EquippedItemState, const array<EquipmentInfo> InventoryItems)
+{
+	local XComGameState_Item	LoadoutItemState;
+	local XComGameStateHistory	History;
+	local EquipmentInfo			EqInfo;
+	local name					EquippedItemName;
+
+	History = `XCOMHISTORY;
+	EquippedItemName = EquippedItemState.GetMyTemplateName();
+
+	foreach InventoryItems(EqInfo)
+	{
+		LoadoutItemState = XComGameState_Item(History.GetGameStateForObjectID(EqInfo.EquipmentRef.ObjectID));
+
+		if (LoadoutItemState.GetMyTemplateName() == EquippedItemName) return true;
+	}
+	return false;
 }
 /*
 {

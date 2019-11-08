@@ -3,15 +3,15 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # XCOM ModBuddy Solution File, Format Version 11.00
 VisualStudioVersion = 12.0.21005.1
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{5DAE07AF-E217-45C1-8DE7-FF99D6011E8A}") = "WOTCAutomatedLoadoutSaver", "WOTCAutomatedLoadoutSaver\WOTCAutomatedLoadoutSaver.x2proj", "{9A666822-06A0-4CDC-8662-0F6CB4AA0FEE}"
+Project("{5DAE07AF-E217-45C1-8DE7-FF99D6011E8A}") = "WOTCAutomatedLoadoutSaver", "WOTCAutomatedLoadoutSaver\WOTCAutomatedLoadoutSaver.x2proj", "{B4D2F9C8-32B2-4F0C-8A97-B9754B012CFF}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Default|XCOM 2 = Default|XCOM 2
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{9A666822-06A0-4CDC-8662-0F6CB4AA0FEE}.Default|XCOM 2.ActiveCfg = Default|XCOM 2
-		{9A666822-06A0-4CDC-8662-0F6CB4AA0FEE}.Default|XCOM 2.Build.0 = Default|XCOM 2
+		{B4D2F9C8-32B2-4F0C-8A97-B9754B012CFF}.Default|XCOM 2.ActiveCfg = Default|XCOM 2
+		{B4D2F9C8-32B2-4F0C-8A97-B9754B012CFF}.Default|XCOM 2.Build.0 = Default|XCOM 2
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
