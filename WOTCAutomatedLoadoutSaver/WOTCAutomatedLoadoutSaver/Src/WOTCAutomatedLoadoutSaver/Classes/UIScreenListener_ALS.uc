@@ -100,6 +100,7 @@ event OnLoseFocus(UIScreen Screen)
 {
 	if(UIArmory_Loadout(Screen) != none && CHVersion != none)
 	{
+		`LOG("## UISquadSelect loses focus.", default.bLog, 'IRIALM');
 		`SCREENSTACK.UnsubscribeFromOnInput(OnArmoryLoadoutInput);
 	}
 }
@@ -108,6 +109,7 @@ event OnRemovedFocus(UIScreen Screen)
 {
 	if(UIArmory_Loadout(Screen) != none && CHVersion != none)
 	{
+		`LOG("## UISquadSelect removed focus.", default.bLog, 'IRIALM');
 		`SCREENSTACK.UnsubscribeFromOnInput(OnArmoryLoadoutInput);
 	}
 }
