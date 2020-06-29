@@ -1,5 +1,10 @@
 class X2DownloadableContentInfo_WOTCAutomatedLoadoutSaver extends X2DownloadableContentInfo;
 
+//	Current issues:
+// 1. Cannot find better version of an equipped infinite item if it's in a multi slot
+// 2. Cannot find better version of an equipped infinite item if it's already in the loadout
+// Both are fixed by clicking "unequip barracks" first, so whatevs. This (probably?) happens because of CanAddItemToInventory checks and multi slot capacity check.
+
 exec function ALMResetSavedLoadouts()
 {
 	local XComGameState_ALS				StateObject;
